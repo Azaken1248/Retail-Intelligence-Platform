@@ -22,29 +22,29 @@ resources:
       tasks:
         - task_key: bronze_ingest
           notebook_task:
-            notebook_path: ../notebooks/01_ingest.py
+            notebook_path: notebooks/01_ingest.py
           
         - task_key: silver_clean
           depends_on:
             - task_key: bronze_ingest
           notebook_task:
-            notebook_path: ../notebooks/02_silver.py
+            notebook_path: notebooks/02_silver.py
 
         - task_key: gold_dimensions
           depends_on:
             - task_key: silver_clean
           notebook_task:
-            notebook_path: ../notebooks/03_dimensions.py
+            notebook_path: notebooks/03_dimensions.py
 
         - task_key: gold_fact
           depends_on:
             - task_key: silver_clean
           notebook_task:
-            notebook_path: ../notebooks/04_fact_sales.py
+            notebook_path: notebooks/04_fact_sales.py
 
         - task_key: gold_quality_checks
           depends_on:
             - task_key: gold_dimensions
             - task_key: gold_fact
           notebook_task:
-            notebook_path: ../notebooks/05_quality_checks.py
+            notebook_path: notebooks/05_quality_checks.py
