@@ -2,6 +2,7 @@
 # Environments & Secrets
 .env
 .env.*
+!.env.example
 *.pem
 secrets/
 
