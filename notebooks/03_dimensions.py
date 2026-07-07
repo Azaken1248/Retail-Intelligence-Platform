@@ -12,13 +12,14 @@ spark = SparkSession.builder \
     .appName("RetailIntelligence_Dimensions") \
     .getOrCreate()
 
-DB_SCHEMA = "raw_data.default"
+SILVER_SCHEMA = "raw_data.silver"
+GOLD_SCHEMA = "raw_data.gold"
 logger.info("Starting Gold Layer Dimensional Modeling (Enterprise Standard)...")
 
 
 # 1. CUSTOMER DIMENSION (dim_customer)
 logger.info("Generating dim_customer with SHA-256 deterministic hash keys...")
-df_silver_customers = spark.read.table(f"{DB_SCHEMA}.silver_customers")
+df_silver_customers = spark.read.table(f"{SILVER_SCHEMA}.silver_customers")
 
 dim_customer = df_silver_customers.withColumn(
     "customer_sk", 
@@ -29,14 +30,14 @@ dim_customer = df_silver_customers.withColumn(
 cust_cols = ["customer_sk"] + [c for c in dim_customer.columns if c != "customer_sk"]
 dim_customer = dim_customer.select(*cust_cols)
 
-dim_customer.write.format("delta").mode("overwrite").saveAsTable(f"{DB_SCHEMA}.dim_customer")
-spark.sql(f"OPTIMIZE {DB_SCHEMA}.dim_customer ZORDER BY (customer_sk)")
+dim_customer.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_SCHEMA}.dim_customer")
+spark.sql(f"OPTIMIZE {GOLD_SCHEMA}.dim_customer ZORDER BY (customer_sk)")
 
 
 
 # 2. PRODUCT DIMENSION (dim_product)
 logger.info("Generating dim_product with SHA-256 deterministic hash keys...")
-df_silver_products = spark.read.table(f"{DB_SCHEMA}.silver_products")
+df_silver_products = spark.read.table(f"{SILVER_SCHEMA}.silver_products")
 
 dim_product = df_silver_products.withColumn(
     "product_sk", 
@@ -46,8 +47,8 @@ dim_product = df_silver_products.withColumn(
 prod_cols = ["product_sk"] + [c for c in dim_product.columns if c != "product_sk"]
 dim_product = dim_product.select(*prod_cols)
 
-dim_product.write.format("delta").mode("overwrite").saveAsTable(f"{DB_SCHEMA}.dim_product")
-spark.sql(f"OPTIMIZE {DB_SCHEMA}.dim_product ZORDER BY (product_sk)")
+dim_product.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_SCHEMA}.dim_product")
+spark.sql(f"OPTIMIZE {GOLD_SCHEMA}.dim_product ZORDER BY (product_sk)")
 
 
 
@@ -68,7 +69,10 @@ dim_date = df_date_range.select(
     date_format(col("calendar_date"), "EEEE").alias("day_name")
 )
 
-dim_date.write.format("delta").mode("overwrite").saveAsTable(f"{DB_SCHEMA}.dim_date")
-spark.sql(f"OPTIMIZE {DB_SCHEMA}.dim_date ZORDER BY (date_sk)")
+dim_date.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_SCHEMA}.dim_date")
+spark.sql(f"OPTIMIZE {GOLD_SCHEMA}.dim_date ZORDER BY (date_sk)")
 
 logger.info("Enterprise Gold layer dimensions successfully created!")
+
+# Verification query
+spark.sql("SHOW TABLES IN raw_data.gold").show()

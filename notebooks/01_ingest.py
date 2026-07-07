@@ -20,7 +20,7 @@ tables_to_ingest = {
 }
 
 for file_name, table_name in tables_to_ingest.items():
-    print(f"Ingesting {file_name} -> raw_data.default.{table_name}...")
+    print(f"Ingesting {file_name} -> raw_data.bronze.{table_name}...")
     
     # 1. Read raw CSV with schema inference
     df = (spark.read
@@ -37,6 +37,9 @@ for file_name, table_name in tables_to_ingest.items():
      .format("delta")
      .mode("overwrite")
      .option("mergeSchema", "true")
-     .saveAsTable(f"raw_data.default.{table_name}"))
+     .saveAsTable(f"raw_data.bronze.{table_name}"))
         
 print("Bronze layer ingestion complete!")
+
+# Verification query
+spark.sql("SHOW TABLES IN raw_data.bronze").show()

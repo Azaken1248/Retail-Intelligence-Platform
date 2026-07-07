@@ -12,16 +12,17 @@ spark = SparkSession.builder \
     .appName("RetailIntelligence_FactSales") \
     .getOrCreate()
 
-DB_SCHEMA = "raw_data.default"
-TARGET_TABLE = f"{DB_SCHEMA}.fact_sales"
+SILVER_SCHEMA = "raw_data.silver"
+GOLD_SCHEMA = "raw_data.gold"
+TARGET_TABLE = f"{GOLD_SCHEMA}.fact_sales"
 logger.info("Starting Enterprise Fact Table Pipeline (Incremental Merge)...")
 
 
 # 1. READ SILVER TABLES
 logger.info("Reading cleaned Silver tables...")
-df_orders = spark.read.table(f"{DB_SCHEMA}.silver_orders")
-df_items = spark.read.table(f"{DB_SCHEMA}.silver_order_items")
-df_customers = spark.read.table(f"{DB_SCHEMA}.silver_customers").select("customer_id", "customer_unique_id")
+df_orders = spark.read.table(f"{SILVER_SCHEMA}.silver_orders")
+df_items = spark.read.table(f"{SILVER_SCHEMA}.silver_order_items")
+df_customers = spark.read.table(f"{SILVER_SCHEMA}.silver_customers").select("customer_id", "customer_unique_id")
 
 
 # 2. DENORMALIZE & GENERATE SURROGATE KEYS
@@ -83,3 +84,6 @@ logger.info("Optimizing physical storage layout...")
 spark.sql(f"OPTIMIZE {TARGET_TABLE} ZORDER BY (order_date_sk, customer_sk, product_sk)")
 
 logger.info("Enterprise Gold fact table pipeline complete!")
+
+# Verification query
+spark.sql("SHOW TABLES IN raw_data.gold").show()
