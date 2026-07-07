@@ -1,22 +1,9 @@
-"""
-Retail Intelligence MCP Server.
-
-Exposes deterministic tools over the Model Context Protocol so that
-any MCP-compatible LLM client (e.g. Claude Desktop) can query the
-Databricks Gold layer using natural language.
-
-Run standalone:
-    cd api && python -m app.mcp.server
-"""
-
 import json
 import logging
 import sys
 
-# Ensure the api/ directory is on the path when run as __main__
 if __name__ == "__main__":
     import pathlib
-
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from mcp.server.fastmcp import FastMCP
@@ -25,43 +12,25 @@ from app.services.databricks_client import db_service
 
 logger = logging.getLogger(__name__)
 
-# ── Server Instance ──────────────────────────────────────────────────
-
 mcp = FastMCP(
     "Retail Intelligence MCP",
-    description=(
-        "Enterprise MCP server providing AI-powered access to retail "
-        "analytics data stored in a Databricks Gold-layer Star Schema."
-    ),
+    description="Enterprise MCP server providing AI-powered access to retail analytics data.",
 )
 
-# ── Safety ───────────────────────────────────────────────────────────
-
 _FORBIDDEN_PREFIXES = frozenset(
-    [
-        "DROP",
-        "DELETE",
-        "INSERT",
-        "UPDATE",
-        "ALTER",
-        "CREATE",
-        "TRUNCATE",
-        "GRANT",
-        "REVOKE",
-        "MERGE",
-    ]
+    ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "TRUNCATE", "GRANT", "REVOKE", "MERGE"]
 )
 
 _SCHEMA_REFERENCE = """
 Available Gold-layer objects:
 
 Tables:
-  raw_data.gold.fact_sales      — Grain: one row per order-item
-  raw_data.gold.dim_customer    — Customer dimension (SK = SHA-256 hash)
-  raw_data.gold.dim_product     — Product dimension (SK = SHA-256 hash)
-  raw_data.gold.dim_date        — Calendar dimension (SK = yyyyMMdd int)
+  raw_data.gold.fact_sales
+  raw_data.gold.dim_customer
+  raw_data.gold.dim_product
+  raw_data.gold.dim_date
 
-Prebuilt Views:
+Views:
   raw_data.gold.vw_executive_kpis
   raw_data.gold.vw_monthly_sales
   raw_data.gold.vw_yoy_growth
@@ -71,19 +40,12 @@ Prebuilt Views:
 
 
 def _safe_json(data) -> str:
-    """Serialize query results to JSON with sane defaults."""
     return json.dumps(data, default=str, indent=2)
-
-
-# ── Tools ────────────────────────────────────────────────────────────
 
 
 @mcp.tool()
 def execute_sql(query: str) -> str:
     """Execute a read-only SQL query against the Databricks Gold layer.
-
-    Use this for any custom analytical question.  Only SELECT statements
-    are permitted — write operations are blocked.
 
     SCHEMA REFERENCE:
     {schema}
@@ -100,11 +62,7 @@ def execute_sql(query: str) -> str:
 
 @mcp.tool()
 def sales_summary() -> str:
-    """Get a high-level executive summary of all-time sales KPIs.
-
-    Returns total orders, unique customers, total revenue, and
-    average order value.
-    """
+    """Get a high-level executive summary of all-time sales KPIs."""
     try:
         data = db_service.execute_query(
             "SELECT * FROM raw_data.gold.vw_executive_kpis LIMIT 1"
@@ -118,11 +76,7 @@ def sales_summary() -> str:
 
 @mcp.tool()
 def monthly_trends(months: int = 12) -> str:
-    """Get month-over-month sales performance data.
-
-    Args:
-        months: Number of recent months to return (default 12).
-    """
+    """Get month-over-month sales performance data."""
     try:
         data = db_service.execute_query(
             "SELECT * FROM raw_data.gold.vw_monthly_sales "
@@ -138,8 +92,7 @@ def yoy_growth() -> str:
     """Get year-over-year revenue growth analysis with percentage changes."""
     try:
         data = db_service.execute_query(
-            "SELECT * FROM raw_data.gold.vw_yoy_growth "
-            "ORDER BY calendar_year DESC"
+            "SELECT * FROM raw_data.gold.vw_yoy_growth ORDER BY calendar_year DESC"
         )
         return _safe_json(data)
     except Exception as e:
@@ -148,11 +101,7 @@ def yoy_growth() -> str:
 
 @mcp.tool()
 def top_customers(limit: int = 20) -> str:
-    """Get the top customers ranked by lifetime value (LTV).
-
-    Args:
-        limit: Number of top customers to return (default 20).
-    """
+    """Get the top customers ranked by lifetime value (LTV)."""
     try:
         data = db_service.execute_query(
             "SELECT * FROM raw_data.gold.vw_customer_ltv_ranking "
@@ -165,9 +114,7 @@ def top_customers(limit: int = 20) -> str:
 
 @mcp.tool()
 def category_analysis() -> str:
-    """Get product category analysis showing freight cost burden
-    relative to revenue. Helps identify logistics inefficiencies.
-    """
+    """Get product category analysis showing freight cost burden relative to revenue."""
     try:
         data = db_service.execute_query(
             "SELECT * FROM raw_data.gold.vw_category_freight_burden "
@@ -177,8 +124,6 @@ def category_analysis() -> str:
     except Exception as e:
         return f"Failed to fetch category analysis: {e}"
 
-
-# ── Entry Point ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     mcp.run()

@@ -1,10 +1,3 @@
-"""
-Business Analytics REST controller.
-
-Exposes customer LTV rankings, category freight analysis, and a
-safe ad-hoc query endpoint for power users and the MCP layer.
-"""
-
 import logging
 from typing import Optional
 
@@ -17,35 +10,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["Business Analytics"])
 
-# SQL keywords that must never start a user-submitted query
 _FORBIDDEN_PREFIXES = frozenset(
-    [
-        "DROP",
-        "DELETE",
-        "INSERT",
-        "UPDATE",
-        "ALTER",
-        "CREATE",
-        "TRUNCATE",
-        "GRANT",
-        "REVOKE",
-        "MERGE",
-    ]
+    ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "TRUNCATE", "GRANT", "REVOKE", "MERGE"]
 )
 
 
-@router.get(
-    "/customer-ltv", response_model=APIResponse, summary="Customer LTV Rankings"
-)
+@router.get("/customer-ltv", response_model=APIResponse, summary="Customer LTV Rankings")
 async def get_customer_ltv(
-    limit: int = Query(
-        default=50, ge=1, le=500, description="Number of customers to return"
-    ),
-    decile: Optional[int] = Query(
-        default=None, ge=1, le=10, description="Filter by LTV decile (1 = top 10%%)"
-    ),
+    limit: int = Query(default=50, ge=1, le=500, description="Number of customers to return"),
+    decile: Optional[int] = Query(default=None, ge=1, le=10, description="Filter by LTV decile (1 = top 10%%)"),
 ):
-    """Fetch customer lifetime value rankings with optional decile filtering."""
     try:
         query = "SELECT * FROM raw_data.gold.vw_customer_ltv_ranking"
         if decile is not None:
@@ -58,17 +32,10 @@ async def get_customer_ltv(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get(
-    "/category-freight",
-    response_model=APIResponse,
-    summary="Category Freight Burden",
-)
+@router.get("/category-freight", response_model=APIResponse, summary="Category Freight Burden")
 async def get_category_freight(
-    limit: int = Query(
-        default=20, ge=1, le=100, description="Number of categories to return"
-    ),
+    limit: int = Query(default=20, ge=1, le=100, description="Number of categories to return"),
 ):
-    """Fetch product category freight burden analysis."""
     try:
         data = db_service.execute_query(
             "SELECT * FROM raw_data.gold.vw_category_freight_burden "
@@ -80,17 +47,8 @@ async def get_category_freight(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post(
-    "/query",
-    response_model=QueryResponse,
-    summary="Execute Ad-Hoc SQL (Read-Only)",
-)
+@router.post("/query", response_model=QueryResponse, summary="Execute Ad-Hoc SQL (Read-Only)")
 async def execute_query(request: QueryRequest):
-    """Execute a safe, read-only SQL query against the Gold layer.
-
-    All write operations (DROP, DELETE, INSERT, etc.) are blocked at the
-    application level before the query reaches Databricks.
-    """
     first_keyword = request.sql.strip().split()[0].upper()
     if first_keyword in _FORBIDDEN_PREFIXES:
         raise HTTPException(
