@@ -1,5 +1,11 @@
 # Import Required Packages
+from pyspark.sql import SparkSession
 from pyspark.sql.functions import current_timestamp
+
+# Initialize Spark session for local IDEs (Databricks will just use its existing session)
+spark = SparkSession.builder \
+    .appName("RetailIntelligence_Bronze") \
+    .getOrCreate()
 
 # Set Base Path For Unity Catalog Volume
 volume_path = "/Volumes/raw_data/default/raw_data/"
