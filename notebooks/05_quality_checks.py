@@ -1,6 +1,6 @@
 import logging
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, lit
+from pyspark.sql.functions import current_timestamp
 
 
 # 0. CONFIGURATION & SETUP
@@ -77,7 +77,7 @@ class DGDQValidator:
         if self.critical_failures > 0:
             logger.critical(f"HALTING PIPELINE: {self.critical_failures} critical DGDQ violations detected.")
             try:
-                dbutils.notebook.exit(f"PIPELINE_FAILED_DGDQ_VIOLATION")
+                dbutils.notebook.exit("PIPELINE_FAILED_DGDQ_VIOLATION")
             except NameError:
                 raise Exception(f"PIPELINE_FAILED: {self.critical_failures} critical DGDQ violations detected.")
         else:

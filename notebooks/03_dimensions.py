@@ -1,7 +1,6 @@
 import logging
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, date_format, year, quarter, month, dayofmonth, sha2
-from pyspark.sql.window import Window
 
 
 # 0. CONFIGURATION & SETUP
