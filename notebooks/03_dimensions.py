@@ -1,3 +1,4 @@
+# Databricks notebook source
 import logging
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, date_format, year, quarter, month, dayofmonth, sha2

@@ -1,3 +1,4 @@
+# Databricks notebook source
 # Import Required Packages
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import current_timestamp

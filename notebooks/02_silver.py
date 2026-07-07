@@ -1,3 +1,4 @@
+# Databricks notebook source
 import logging
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, current_timestamp, to_timestamp, trim, lower, coalesce, lit
