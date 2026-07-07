@@ -1,9 +1,10 @@
 bundle:
   name: retail-intelligence-pipeline
 
-include:
-  - notebooks/*.py
-  - sql/*.sql
+sync:
+  include:
+    - notebooks/*.py
+    - sql/*.sql
 
 workspace:
   root_path: /Shared/.bundle/${bundle.name}
