@@ -1,0 +1,17 @@
+# ── Retail Intelligence API ──────────────────────────────────────────
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Data Validation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Databricks Connectivity
+databricks-sql-connector>=3.0.0
+
+# MCP (Model Context Protocol)
+mcp[cli]>=1.0.0
+
+# Environment
+python-dotenv>=1.0.0
