@@ -1,7 +1,16 @@
 # Databricks notebook source
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import current_timestamp
+
+if TYPE_CHECKING:
+    from pyspark.dbutils import DBUtils
+
+    dbutils: DBUtils
 
 
 # 0. CONFIGURATION & SETUP

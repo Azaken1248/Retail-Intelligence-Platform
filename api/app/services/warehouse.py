@@ -68,7 +68,7 @@ def get_monthly_trends(months: int = 12) -> str:
     try:
         data = db_service.execute_query(
             "SELECT * FROM raw_data.gold.vw_monthly_sales "
-            f"ORDER BY sales_year DESC, sales_month DESC LIMIT {int(months)}"
+            f"ORDER BY sales_year DESC, sales_month DESC LIMIT {months}"
         )
         return _safe_json(data)
     except Exception as e:
@@ -91,7 +91,7 @@ def get_top_customers(limit: int = 20) -> str:
     try:
         data = db_service.execute_query(
             "SELECT * FROM raw_data.gold.vw_customer_ltv_ranking "
-            f"ORDER BY ltv_rank ASC LIMIT {int(limit)}"
+            f"ORDER BY ltv_rank ASC LIMIT {limit}"
         )
         return _safe_json(data)
     except Exception as e:
