@@ -12,10 +12,10 @@ The MCP server runs as a separate service on **Port 8001** and uses the **Server
 
 ```mermaid
 sequenceDiagram
-    participant LLM as LLM Client (e.g. Claude Desktop)
-    participant MCP as FastMCP Server (Port 8001)
-    participant WH as Warehouse Service
-    participant DB as Databricks SQL Warehouse
+    participant LLM as "LLM Client (e.g. Claude Desktop)"
+    participant MCP as "FastMCP Server (Port 8001)"
+    participant WH as "Warehouse Service"
+    participant DB as "Databricks SQL Warehouse"
 
     LLM->>MCP: GET /sse (Establish Connection)
     MCP-->>LLM: SSE Stream Connected

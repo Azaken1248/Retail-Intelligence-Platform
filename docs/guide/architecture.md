@@ -7,27 +7,27 @@ The Retail Intelligence Platform runs a complete data pipeline spanning a medall
 ```mermaid
 flowchart TD
     subgraph Raw Source
-        CSV["Raw CSV Files\n(Olist E-Commerce)"]
+        CSV["Raw CSV Files<br>(Olist E-Commerce)"]
     end
 
     subgraph Databricks Lakehouse
-        Volume["Unity Catalog Volume\n(raw_data)"]
-        Bronze[("Bronze Layer\n(Raw Ingestion delta)")]
-        Silver[("Silver Layer\n(Cleaned/Validated)")]
-        Gold[("Gold Layer\n(Star Schema Tables)")]
-        Views["Gold SQL Views\n(vw_executive_kpis, etc)"]
+        Volume["Unity Catalog Volume<br>(raw_data)"]
+        Bronze[("Bronze Layer<br>(Raw Ingestion delta)")]
+        Silver[("Silver Layer<br>(Cleaned/Validated)")]
+        Gold[("Gold Layer<br>(Star Schema Tables)")]
+        Views["Gold SQL Views<br>(vw_executive_kpis, etc)"]
         
         CSV -->|Upload| Volume
         Volume -->|01_ingest.py| Bronze
         Bronze -->|02_silver.py| Silver
-        Silver -->|03_dimensions.py\n04_fact_sales.py| Gold
+        Silver -->|03_dimensions.py<br>04_fact_sales.py| Gold
         Gold -->|sql/| Views
     end
 
     subgraph Serving Layer
-        API["FastAPI App\n(Port 8000/8008)"]
-        MCP["MCP Server\n(Port 8001 / SSE)"]
-        Client["Databricks SQL Connector\n(thrift/HTTP)"]
+        API["FastAPI App<br>(Port 8000/8008)"]
+        MCP["MCP Server<br>(Port 8001 / SSE)"]
+        Client["Databricks SQL Connector<br>(thrift/HTTP)"]
         
         Views -->|JDBC/ODBC Query| Client
         Client -->|Fetch Results| API
@@ -35,10 +35,10 @@ flowchart TD
     end
 
     subgraph Consumers
-        Exec["Business Executive\n(Reads dashboards/charts)"]
-        Dev["Technical Developer\n(Examines SQL/ERs)"]
-        Agent["Gemini Agent Loop\n(Dynamic system prompt)"]
-        Claude["Claude Desktop\n(Using MCP Client)"]
+        Exec["Business Executive<br>(Reads dashboards/charts)"]
+        Dev["Technical Developer<br>(Examines SQL/ERs)"]
+        Agent["Gemini Agent Loop<br>(Dynamic system prompt)"]
+        Claude["Claude Desktop<br>(Using MCP Client)"]
         
         API -->|/api/v1/agent/chat| Agent
         Agent -->|executive| Exec
