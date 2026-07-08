@@ -12,16 +12,16 @@ flowchart TD
 
     subgraph Databricks Lakehouse
         Volume["Unity Catalog Volume<br>(raw_data)"]
-        Bronze[("Bronze Layer<br>(Raw Ingestion delta)")]
-        Silver[("Silver Layer<br>(Cleaned/Validated)")]
-        Gold[("Gold Layer<br>(Star Schema Tables)")]
+        Bronze[("Bronze Layer<br>Raw Ingestion Delta")]
+        Silver[("Silver Layer<br>Cleaned and Validated")]
+        Gold[("Gold Layer<br>Star Schema Tables")]
         Views["Gold SQL Views<br>(vw_executive_kpis, etc)"]
         
         CSV -->|Upload| Volume
         Volume -->|01_ingest.py| Bronze
         Bronze -->|02_silver.py| Silver
         Silver -->|03_dimensions.py<br>04_fact_sales.py| Gold
-        Gold -->|sql/| Views
+        Gold -->|"sql/"| Views
     end
 
     subgraph Serving Layer
@@ -29,7 +29,7 @@ flowchart TD
         MCP["MCP Server<br>(Port 8001 / SSE)"]
         Client["Databricks SQL Connector<br>(thrift/HTTP)"]
         
-        Views -->|JDBC/ODBC Query| Client
+        Views -->|"JDBC/ODBC Query"| Client
         Client -->|Fetch Results| API
         Client -->|Fetch Results| MCP
     end
@@ -40,7 +40,7 @@ flowchart TD
         Agent["Gemini Agent Loop<br>(Dynamic system prompt)"]
         Claude["Claude Desktop<br>(Using MCP Client)"]
         
-        API -->|/api/v1/agent/chat| Agent
+        API -->|"/api/v1/agent/chat"| Agent
         Agent -->|executive| Exec
         Agent -->|developer| Dev
         MCP -->|SSE transport| Claude
