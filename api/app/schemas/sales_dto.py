@@ -62,3 +62,22 @@ class CategoryFreight(BaseModel):
     total_revenue: float
     total_freight_cost: float
     freight_to_revenue_ratio: float
+
+
+class AgentRequest(BaseModel):
+    message: str = Field(
+        ...,
+        description="Natural-language question or instruction for the AI agent.",
+        min_length=2,
+        examples=["Generate this week's executive report", "Show sales by country"],
+    )
+
+
+class AgentResponse(BaseModel):
+    status: str = "success"
+    response: str = Field(..., description="The agent's natural-language answer.")
+    tools_used: list[str] = Field(
+        default_factory=list,
+        description="List of MCP tools the agent invoked to answer the query.",
+    )
+

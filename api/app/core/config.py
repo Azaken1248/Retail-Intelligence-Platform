@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     databricks_http_path: str = ""
     databricks_token: str = ""
 
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
     app_name: str = "Retail Intelligence API"
     app_version: str = "1.0.0"
     debug: bool = False

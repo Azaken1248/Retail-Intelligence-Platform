@@ -1,14 +1,23 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings, setup_logging
-from app.routers import analytics, sales
+from app.routers import agent, analytics, sales
 
 settings = get_settings()
 setup_logging(settings.log_level)
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    logger.info("%s v%s is starting…", settings.app_name, settings.app_version)
+    yield
+    logger.info("Shutting down %s…", settings.app_name)
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -16,6 +25,7 @@ app = FastAPI(
     version=settings.app_version,
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -28,6 +38,7 @@ app.add_middleware(
 
 app.include_router(sales.router)
 app.include_router(analytics.router)
+app.include_router(agent.router)
 
 
 @app.get("/health", tags=["System"], summary="Health Check")
@@ -38,12 +49,3 @@ async def health_check():
         "version": settings.app_version,
     }
 
-
-@app.on_event("startup")
-async def on_startup():
-    logger.info("%s v%s is starting…", settings.app_name, settings.app_version)
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    logger.info("Shutting down %s…", settings.app_name)
