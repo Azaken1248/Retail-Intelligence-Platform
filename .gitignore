@@ -73,3 +73,9 @@ Thumbs.db
 
 # Misc
 directory.txt
+
+# Node & VitePress Docs
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/package-lock.json
