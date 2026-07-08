@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -71,6 +71,14 @@ class AgentRequest(BaseModel):
         min_length=2,
         examples=["Generate this week's executive report", "Show sales by country"],
     )
+    role: Literal["executive", "developer"] = Field(
+        default="executive",
+        description=(
+            "Persona that controls the agent's response style. "
+            "'executive' returns polished business insights with Mermaid charts. "
+            "'developer' includes raw SQL queries, schema details, and ER diagrams."
+        ),
+    )
 
 
 class AgentResponse(BaseModel):
@@ -79,5 +87,11 @@ class AgentResponse(BaseModel):
     tools_used: list[str] = Field(
         default_factory=list,
         description="List of MCP tools the agent invoked to answer the query.",
+    )
+    queries_used: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "SQL queries the agent executed (only populated in developer mode)."
+        ),
     )
 

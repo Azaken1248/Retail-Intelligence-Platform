@@ -13,56 +13,32 @@ from google import genai
 from google.genai import types
 
 from app.core.config import get_settings
+from app.core.prompts import build_system_prompt
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-You are the **Retail Intelligence Analyst**, an expert AI assistant for a \
-Brazilian e-commerce analytics platform. You have access to a curated Gold-layer \
-data warehouse built on Databricks and can answer any business question about \
-sales, customers, products, and logistics.
+# ── Convenience-tool → SQL mapping (for developer-mode transparency) ─────────
 
-## Your Data Schema
+_TOOL_SQL_MAP: dict[str, str] = {
+    "sales_summary": "SELECT * FROM raw_data.gold.vw_executive_kpis LIMIT 1",
+    "monthly_trends": (
+        "SELECT * FROM raw_data.gold.vw_monthly_sales "
+        "ORDER BY sales_year DESC, sales_month DESC LIMIT {months}"
+    ),
+    "yoy_growth": (
+        "SELECT * FROM raw_data.gold.vw_yoy_growth ORDER BY calendar_year DESC"
+    ),
+    "top_customers": (
+        "SELECT * FROM raw_data.gold.vw_customer_ltv_ranking "
+        "ORDER BY ltv_rank ASC LIMIT {limit}"
+    ),
+    "category_analysis": (
+        "SELECT * FROM raw_data.gold.vw_category_freight_burden "
+        "ORDER BY freight_to_revenue_ratio DESC"
+    ),
+}
 
-**Fact Table:**
-- `raw_data.gold.fact_sales` — one row per order-item with: order_sk, customer_sk, \
-product_sk, date_sk, price, freight_value, order_status, review_score, etc.
-
-**Dimension Tables:**
-- `raw_data.gold.dim_customer` — customer_sk, customer_city, customer_state
-- `raw_data.gold.dim_product` — product_sk, product_category_name, \
-product_weight_g, product_length_cm, etc.
-- `raw_data.gold.dim_date` — date_sk, full_date, calendar_year, calendar_month, \
-day_of_week, is_weekend, etc.
-
-**Pre-built Views (prefer these for common queries):**
-- `raw_data.gold.vw_executive_kpis` — total_lifetime_orders, total_unique_customers, \
-total_lifetime_revenue, average_order_value
-- `raw_data.gold.vw_monthly_sales` — sales_year, sales_month, total_orders, \
-total_items_sold, total_revenue, total_freight_cost
-- `raw_data.gold.vw_yoy_growth` — calendar_year, current_revenue, \
-previous_year_revenue, yoy_growth_percentage
-- `raw_data.gold.vw_customer_ltv_ranking` — customer_sk, total_orders, \
-lifetime_value, ltv_decile, ltv_rank
-- `raw_data.gold.vw_category_freight_burden` — product_category_name, items_sold, \
-total_revenue, total_freight_cost, freight_to_revenue_ratio
-
-## Tool Usage Rules
-1. **Always use a tool** to fetch data before answering data questions. Never guess.
-2. Prefer the pre-built convenience tools (`sales_summary`, `monthly_trends`, \
-`yoy_growth`, `top_customers`, `category_analysis`) when they match the query.
-3. Fall back to `execute_sql` for custom queries not covered by the convenience tools.
-4. Only write SELECT statements. Write operations are blocked.
-5. Use standard SQL compatible with Databricks SQL / Spark SQL.
-
-## Response Formatting
-- Present numbers with proper formatting (commas, currency symbols where appropriate).
-- Use markdown tables for tabular data.
-- When asked for a "report" or "executive summary", structure it with clear \
-headings, key metrics highlighted, and actionable insights.
-- Be concise but thorough. Always cite which data you used.
-- Currency is in BRL (Brazilian Real, R$).
-"""
+# ── Gemini tool declarations ─────────────────────────────────────────────────
 
 TOOL_DECLARATIONS = types.Tool(
     function_declarations=[
@@ -136,6 +112,8 @@ TOOL_DECLARATIONS = types.Tool(
     ]
 )
 
+# ── Tool registry ────────────────────────────────────────────────────────────
+
 _TOOL_REGISTRY = None
 
 
@@ -176,15 +154,45 @@ def _execute_tool(name: str, args: dict[str, Any]) -> str:
         return f"Tool execution error: {e}"
 
 
-async def run_agent(user_message: str) -> dict:
+def _resolve_query(tool_name: str, tool_args: dict[str, Any]) -> str | None:
+    """Resolve the SQL query a convenience tool executes (for developer mode).
+
+    Returns the formatted SQL string, or ``None`` if the tool is not
+    a convenience wrapper (i.e. ``execute_sql`` — whose query is already
+    explicit in the args).
+    """
+    if tool_name == "execute_sql":
+        return tool_args.get("query")
+
+    template = _TOOL_SQL_MAP.get(tool_name)
+    if template is None:
+        return None
+    try:
+        return template.format(**tool_args)
+    except KeyError:
+        # Fall back to template with defaults filled in
+        defaults = {"months": 12, "limit": 20}
+        defaults.update(tool_args)
+        return template.format(**defaults)
+
+
+# ── Agent loop ───────────────────────────────────────────────────────────────
+
+async def run_agent(user_message: str, role: str = "executive") -> dict:
     """
     Run the Gemini agent loop:
-    1. Send user message + system prompt + tool declarations to Gemini.
+    1. Send user message + role-specific system prompt + tool declarations to Gemini.
     2. If Gemini requests function calls, execute them and feed results back.
     3. Return Gemini's final text response + list of tools used.
+    4. In developer mode, also return the SQL queries executed.
+
+    Args:
+        user_message: The user's natural-language question.
+        role: ``"executive"`` or ``"developer"``.
 
     Returns:
-        dict with keys "response" (str) and "tools_used" (list[str])
+        dict with keys ``"response"``, ``"tools_used"``, and optionally
+        ``"queries_used"`` (developer mode only).
     """
     settings = get_settings()
 
@@ -194,8 +202,10 @@ async def run_agent(user_message: str) -> dict:
             "Set it in your .env file or environment variables."
         )
 
+    system_prompt = build_system_prompt(role)
     client = genai.Client(api_key=settings.gemini_api_key)
     tools_used: list[str] = []
+    queries_used: list[str] = []
 
     contents: list[types.Content] = [
         types.Content(
@@ -206,13 +216,13 @@ async def run_agent(user_message: str) -> dict:
 
     max_iterations = 10
     for iteration in range(max_iterations):
-        logger.info("Agent iteration %d — sending to Gemini", iteration + 1)
+        logger.info("Agent iteration %d — sending to Gemini (role=%s)", iteration + 1, role)
 
         response = client.models.generate_content(
             model=settings.gemini_model,
             contents=contents,
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=system_prompt,
                 tools=[TOOL_DECLARATIONS],
                 temperature=0.2,
             ),
@@ -225,8 +235,12 @@ async def run_agent(user_message: str) -> dict:
         ]
 
         if not function_calls:
-            final_text = candidate.content.parts[0].text or ""
-            return {"response": final_text, "tools_used": tools_used}
+            logger.info("Gemini response parts count: %d", len(candidate.content.parts))
+            final_text = "".join([part.text for part in candidate.content.parts if part.text is not None])
+            result = {"response": final_text, "tools_used": tools_used}
+            if role == "developer":
+                result["queries_used"] = queries_used
+            return result
 
         contents.append(candidate.content)
 
@@ -237,6 +251,11 @@ async def run_agent(user_message: str) -> dict:
             tool_args = dict(fc.args) if fc.args else {}
             logger.info("Gemini called tool: %s(%s)", tool_name, tool_args)
             tools_used.append(tool_name)
+
+            # Track the SQL query for developer mode
+            resolved_sql = _resolve_query(tool_name, tool_args)
+            if resolved_sql:
+                queries_used.append(resolved_sql)
 
             result_str = _execute_tool(tool_name, tool_args)
             function_response_parts.append(
@@ -253,7 +272,10 @@ async def run_agent(user_message: str) -> dict:
             )
         )
 
-    return {
+    result = {
         "response": "I was unable to complete the analysis within the allowed iterations. Please try a simpler query.",
         "tools_used": tools_used,
     }
+    if role == "developer":
+        result["queries_used"] = queries_used
+    return result

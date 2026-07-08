@@ -19,6 +19,10 @@ async def agent_chat(request: AgentRequest):
     (SQL queries, pre-built analytics views), and return a synthesised
     human-readable answer.
 
+    **Roles:**
+    - `executive` (default) — polished business insights with Mermaid charts
+    - `developer` — includes raw SQL queries, schema details, and ER diagrams
+
     **Example prompts:**
     - "Generate this week's executive report"
     - "Show sales by country"
@@ -26,10 +30,11 @@ async def agent_chat(request: AgentRequest):
     - "What's our year-over-year revenue growth?"
     """
     try:
-        result = await run_agent(request.message)
+        result = await run_agent(request.message, role=request.role)
         return AgentResponse(
             response=result["response"],
             tools_used=result["tools_used"],
+            queries_used=result.get("queries_used"),
         )
     except ValueError as e:
         # Missing API key or config error
