@@ -6,44 +6,44 @@ The Retail Intelligence Platform runs a complete data pipeline spanning a medall
 
 ```mermaid
 flowchart TD
-    subgraph Raw Source
-        CSV["Raw CSV Files<br>(Olist E-Commerce)"]
+    subgraph raw_source [Raw Source]
+        CSV["Raw CSV Files<br>Olist E-Commerce"]
     end
 
-    subgraph Databricks Lakehouse
-        Volume["Unity Catalog Volume<br>(raw_data)"]
+    subgraph databricks_lakehouse [Databricks Lakehouse]
+        Volume["Unity Catalog Volume<br>raw_data"]
         Bronze[("Bronze Layer<br>Raw Ingestion Delta")]
         Silver[("Silver Layer<br>Cleaned and Validated")]
         Gold[("Gold Layer<br>Star Schema Tables")]
-        Views["Gold SQL Views<br>(vw_executive_kpis, etc)"]
+        Views["Gold SQL Views<br>vw_executive_kpis, etc"]
         
-        CSV -->|Upload| Volume
-        Volume -->|01_ingest.py| Bronze
-        Bronze -->|02_silver.py| Silver
-        Silver -->|03_dimensions.py<br>04_fact_sales.py| Gold
+        CSV -->|"Upload"| Volume
+        Volume -->|"01_ingest.py"| Bronze
+        Bronze -->|"02_silver.py"| Silver
+        Silver -->|"03_dimensions.py<br>04_fact_sales.py"| Gold
         Gold -->|"sql/"| Views
     end
 
-    subgraph Serving Layer
-        API["FastAPI App<br>(Port 8000/8008)"]
-        MCP["MCP Server<br>(Port 8001 / SSE)"]
-        Client["Databricks SQL Connector<br>(thrift/HTTP)"]
+    subgraph serving_layer [Serving Layer]
+        API["FastAPI App<br>Port 8000/8008"]
+        MCP["MCP Server<br>Port 8001 / SSE"]
+        Client["Databricks SQL Connector<br>thrift/HTTP"]
         
         Views -->|"JDBC/ODBC Query"| Client
-        Client -->|Fetch Results| API
-        Client -->|Fetch Results| MCP
+        Client -->|"Fetch Results"| API
+        Client -->|"Fetch Results"| MCP
     end
 
-    subgraph Consumers
-        Exec["Business Executive<br>(Reads dashboards/charts)"]
-        Dev["Technical Developer<br>(Examines SQL/ERs)"]
-        Agent["Gemini Agent Loop<br>(Dynamic system prompt)"]
-        Claude["Claude Desktop<br>(Using MCP Client)"]
+    subgraph consumers [Consumers]
+        Exec["Business Executive<br>Reads dashboards/charts"]
+        Dev["Technical Developer<br>Examines SQL/ERs"]
+        Agent["Gemini Agent Loop<br>Dynamic system prompt"]
+        Claude["Claude Desktop<br>Using MCP Client"]
         
         API -->|"/api/v1/agent/chat"| Agent
-        Agent -->|executive| Exec
-        Agent -->|developer| Dev
-        MCP -->|SSE transport| Claude
+        Agent -->|"executive"| Exec
+        Agent -->|"developer"| Dev
+        MCP -->|"SSE transport"| Claude
     end
 ```
 

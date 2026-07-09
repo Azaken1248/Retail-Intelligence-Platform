@@ -73,7 +73,8 @@ export default defineConfig({
           items: [
             { text: 'REST API Endpoints', link: '/guide/api-rest' },
             { text: 'Model Context Protocol (MCP)', link: '/guide/api-mcp' },
-            { text: 'GenAI Agent & Personas', link: '/guide/api-agent' }
+            { text: 'GenAI Agent & Personas', link: '/guide/api-agent' },
+            { text: 'Reference (Terms & SQL)', link: '/guide/reference' }
           ]
         }
       ]
