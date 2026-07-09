@@ -1,6 +1,6 @@
 # Model Context Protocol (MCP) Server
 
-The **Model Context Protocol (MCP)** is an open standard that allows developers to safely expose data and service tools directly to LLM clients (such as Claude Desktop). 
+The **Model Context Protocol (MCP)** is an open standard that allows developers to safely expose data and service tools directly to LLM clients (such as Claude Desktop).
 
 The platform implements an MCP server using the `FastMCP` framework, acting as a thin wrapper over the database warehouse service layer.
 
@@ -8,24 +8,28 @@ The platform implements an MCP server using the `FastMCP` framework, acting as a
 
 ## Architectural Setup
 
-The MCP server runs as a separate service on **Port 8001** and uses the **Server-Sent Events (SSE)** transport protocol. This allows bidirectional communication over standard HTTP connections, enabling external AI clients to discover and run data-queries securely.
+The MCP server runs as a separate service on **Port 8001** and uses the **Server-Sent Events (SSE)** transport protocol. This allows bidirectional communication over standard HTTP connections, enabling external AI clients to discover and run data queries securely.
 
 ```mermaid
 sequenceDiagram
-    participant LLM as "LLM Client (e.g. Claude Desktop)"
-    participant MCP as "FastMCP Server (Port 8001)"
-    participant WH as "Warehouse Service"
-    participant DB as "Databricks SQL Warehouse"
+    participant LLM as LLM Client
+    participant MCP as FastMCP Server
+    participant WH as Warehouse Service
+    participant DB as Databricks SQL
 
-    LLM->>MCP: GET /sse (Establish Connection)
+    LLM->>MCP: GET /sse - Establish Connection
     MCP-->>LLM: SSE Stream Connected
-    LLM->>MCP: POST /messages/ (Call tool: sales_summary)
+
+    LLM->>MCP: POST /messages - Call tool: sales_summary
     MCP->>WH: get_sales_summary()
-    WH->>DB: Query: SELECT * FROM vw_executive_kpis...
-    DB-->>WH: Data returned
+    WH->>DB: SELECT * FROM vw_executive_kpis
+    DB-->>WH: Result rows
     WH-->>MCP: Formatted JSON string
-    MCP-->>LLM: JSON-RPC Response (Result text)
+    MCP-->>LLM: JSON-RPC Response
 ```
+
+> [!NOTE]
+> The LLM client (e.g. Claude Desktop) first opens a persistent SSE connection at `GET /sse`, then sends tool invocations as `POST /messages/` payloads. The server resolves the tool, runs the SQL, and streams back a JSON-RPC response.
 
 ---
 
@@ -97,10 +101,16 @@ if __name__ == "__main__":
 ```
 
 ### Code Deepdive
-- **FastMCP Initialization**: The `FastMCP` class is instantiated with metadata, binding to `0.0.0.0:8001`. This effectively boots up an asynchronous web server behind the scenes.
-- **`@mcp.tool()` Decorator**: This is the magic wrapper. Any Python function decorated with `@mcp.tool()` is automatically parsed (including its docstrings and type hints) and advertised to connecting LLM clients via the MCP protocol.
-- **Database Abstraction**: The actual SQL execution is abstracted away into the `app.services.warehouse` module, keeping the MCP server code lean and purely focused on exposing endpoints.
-- **SSE Transport**: The server is started with `transport="sse"`. Unlike standard REST which closes the connection, SSE keeps a persistent one-way stream open for the LLM to subscribe to status updates and results.
+
+| Concept | Explanation |
+|---|---|
+| **`FastMCP(...)` init** | Instantiates the server, binding to `0.0.0.0:8001`. This boots an async web server that speaks the MCP protocol. |
+| **`@mcp.tool()` decorator** | Registers a Python function as an MCP tool. The function name, docstring, and type hints are automatically parsed and advertised to connecting LLM clients. |
+| **`SCHEMA_REFERENCE`** | A multi-line string injected into the `execute_sql` docstring so the LLM knows the full Gold schema (table names, columns, types) before writing ad-hoc SQL. |
+| **`transport="sse"`** | Starts the server using Server-Sent Events. Unlike REST (request/response), SSE keeps a persistent one-way stream open for the LLM to subscribe to. |
+
+> [!TIP]
+> Every `@mcp.tool()` function delegates to a function in `app/services/warehouse.py`. The MCP layer contains **zero business logic** — it is purely a protocol adapter.
 
 ---
 
@@ -114,3 +124,6 @@ if __name__ == "__main__":
 | `top_customers` | `limit: int` (default: 20) | Lists top customers by lifetime value (LTV). |
 | `category_analysis` | None | Evaluates product shipping cost (freight value) as a percentage of total product price. |
 | `execute_sql` | `query: str` | Validates and runs ad-hoc SELECT queries against the entire schema catalog. |
+
+> [!WARNING]
+> The `execute_sql` tool only permits `SELECT` statements. Any write operations (`INSERT`, `UPDATE`, `DELETE`, etc.) are blocked at the warehouse service layer before reaching Databricks.

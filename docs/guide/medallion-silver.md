@@ -3,8 +3,9 @@
 The Silver Layer is where raw data turns into verified, clean, and deduplicated records. It applies standard transformations, casts types, structures relationships, and acts as a strict gateway to ensure analytical datasets meet compliance targets.
 
 ## Objectives
-- **Data Standardization**: Convert irregular strings to lowercase, trim whitespaces, and resolve date representation differences.
-- **Reference Localization**: Resolve abbreviations and translate codes (e.g. product category names) using translation dictionaries.
+
+- **Data Standardization**: Convert irregular strings to lowercase, trim whitespace, and resolve date representation differences.
+- **Reference Localization**: Translate Portuguese product category names into English using a lookup dictionary.
 - **ACID & Performance Tuning**: Apply Delta optimizations (`OPTIMIZE` + `ZORDER`) to maximize downstream query performance.
 - **Quality Gates**: Halt downstream deployment if primary keys fail uniqueness tests or if orphan references slip into facts.
 
@@ -12,7 +13,7 @@ The Silver Layer is where raw data turns into verified, clean, and deduplicated 
 
 ## Data Conformance & Cleaning (`02_silver.py`)
 
-Here is the complete cleaning pipeline written in PySpark:
+This pipeline reads every Bronze table, applies table-specific cleaning logic, and writes the results to the `raw_data.silver` schema.
 
 ```python
 # Databricks notebook source
@@ -30,7 +31,7 @@ spark = SparkSession.builder \
 
 BRONZE_SCHEMA = "raw_data.bronze"
 SILVER_SCHEMA = "raw_data.silver"
-logger.info("🧹 Starting Enterprise Silver Layer Pipeline...")
+logger.info("Starting Enterprise Silver Layer Pipeline...")
 
 # CLEANING: Customers Table
 logger.info("Processing Customers: Deduplication and String Normalization...")
@@ -97,17 +98,33 @@ logger.info("Enterprise Silver layer pipeline complete and optimized!")
 ```
 
 ### Code Deepdive
-- **Customers Deduplication**: Drops nulls in critical IDs and deduplicates the dataframe by `customer_unique_id`. Also normalizes the city string to lowercase with no trailing spaces.
-- **Orders Timestamp Casting**: Iterates through an array of timestamp columns, explicitly casting the parsed strings to native Spark timestamp types.
-- **Products Localization Join**: Joins the product catalog against the `bronze_category_translation` table to swap out Portuguese category names with their English equivalents, coalescing nulls into an "unknown" default.
-- **Order Items Pass-Through**: Drops records with missing relational keys to prevent orphans downstream.
-- **Optimization Strategy**: Every processed table is written to the `raw_data.silver` schema in Delta format, immediately followed by `OPTIMIZE` and `ZORDER BY` on primary and foreign keys, minimizing disk scans for future queries.
+
+| Table | Transformation | Purpose |
+|---|---|---|
+| **Customers** | `dropDuplicates(["customer_unique_id"])` + `lower(trim(col("customer_city")))` | Removes duplicate customer records and normalizes city names to lowercase without trailing whitespace. |
+| **Orders** | `to_timestamp(col(c))` loop over 5 columns | Casts raw CSV string dates into native Spark `TimestampType` for correct date arithmetic downstream. |
+| **Products** | `join(df_bronze_trans, ...)` + `coalesce(col("...english"), lit("unknown"))` | Left-joins a Portuguese→English translation table and defaults unmatched categories to `"unknown"`. |
+| **Order Items** | `dropna(subset=["order_id", "order_item_id", "product_id"])` | Drops rows with missing relational keys to prevent orphan foreign keys in the Gold layer. |
+
+> [!IMPORTANT]
+> Every Silver table is immediately followed by `OPTIMIZE ... ZORDER BY` on its primary/foreign keys. This physically clusters data on disk so that downstream joins in the Gold layer hit fewer files.
 
 ---
 
 ## Data Governance & Data Quality (DGDQ) Ingestion Guard (`05_quality_checks.py`)
 
-A custom validator class is run at the boundary of the Gold layer. It uses anti-joins to detect foreign key integrity violations and asserts key uniqueness. If any test fails, the framework logs the errors and terminates the pipeline run.
+A custom validator class runs at the Silver→Gold boundary. It uses anti-joins to detect foreign key integrity violations and asserts key uniqueness. **If any test fails, the framework halts the entire pipeline run.**
+
+```mermaid
+flowchart LR
+    Gold["Gold Tables"] --> Validator["DGDQValidator"]
+    Validator --> Unique["Uniqueness Checks"]
+    Validator --> RI["Referential Integrity"]
+    Unique --> Audit["Audit Log"]
+    RI --> Audit
+    Audit -->|All Pass| OK["Pipeline Continues"]
+    Audit -->|Any Fail| HALT["Pipeline Halted"]
+```
 
 ```python
 # Databricks notebook source
@@ -220,10 +237,16 @@ validator.check_referential_integrity(df_fact, df_dim_cust, "customer_sk", "cust
 validator.check_referential_integrity(df_fact, df_dim_prod, "product_sk", "product_sk", "fact_sales", "dim_product")
 validator.check_referential_integrity(df_fact, df_dim_date, "order_date_sk", "date_sk", "fact_sales", "dim_date")
 
+validator.evaluate_and_enforce()
 ```
 
 ### Code Deepdive
-- **DGDQValidator Class**: A stateful validation class that accumulates test results and errors throughout the run.
-- **check_uniqueness**: Verifies that the count of all rows matches the count of distinct primary keys.
-- **check_referential_integrity**: Performs a `left_anti` join between the fact table and the dimension table. Any rows remaining in the result set represent facts that point to non-existent dimension keys (orphans).
-- **evaluate_and_enforce**: Checks if the internal `critical_failures` counter is greater than 0. If it is, the script forcibly halts the Databricks cluster using `dbutils.notebook.exit()` or by raising a generic exception, stopping bad data from polluting the Gold layer.
+
+| Method | How It Works | What Fails It |
+|---|---|---|
+| `check_uniqueness(df, key_column, ...)` | Compares `df.count()` vs `df.select(key).distinct().count()`. Any difference means duplicates exist. | A dimension table where `customer_sk` appears more than once (broken dedup logic in Silver). |
+| `check_referential_integrity(fact, dim, fk, pk, ...)` | Performs a `left_anti` join — returns fact rows whose FK has **no match** in the dimension PK. | A fact row pointing to a `customer_sk` that doesn't exist in `dim_customer` (orphan record). |
+| `evaluate_and_enforce()` | Checks the internal `critical_failures` counter. If > 0, calls `dbutils.notebook.exit()` to kill the Databricks job, or raises a Python exception outside Databricks. | Any single CRITICAL-severity check failing. |
+
+> [!CAUTION]
+> The DGDQ framework is a **hard gate** — a single failed check halts the entire pipeline. This is intentional: it prevents bad data from reaching the Gold reporting views and polluting downstream dashboards.

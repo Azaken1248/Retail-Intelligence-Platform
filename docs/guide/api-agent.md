@@ -1,30 +1,47 @@
 # Role-Aware GenAI Agent
 
-The platform features an intelligent, conversational interface powered by **Gemini 2.5 Flash** and Google's GenAI SDK. 
+The platform features an intelligent, conversational interface powered by **Gemini 2.5 Flash** and Google's GenAI SDK.
 
-By mapping natural language queries to database tool declarations, the agent acts as an autonomous data analyst. Furthermore, it dynamically alters its response formatting based on the caller's persona: **Executive** or **Developer**.
+By mapping natural language queries to database tool declarations, the agent acts as an autonomous data analyst. It dynamically alters its response formatting based on the caller's persona: **Executive** or **Developer**.
 
 ---
 
 ## Agent Personas
 
+```mermaid
+flowchart LR
+    User["User Query"] --> Router{role parameter}
+    Router -->|executive| Exec["Executive Persona"]
+    Router -->|developer| Dev["Developer Persona"]
+    Exec --> Charts["Mermaid Charts + Formatted KPIs"]
+    Dev --> SQL["Raw SQL + ER Diagrams"]
+```
+
 ### 1. Executive Persona (`role = "executive"`)
+
 Tailored for business stakeholders, VPs, and executives.
-- **Goal**: Deliver actionable business takeaways immediately.
-- **Formatting**: Polished Markdown sections, formatted currency (BRL, R$), bulleted KPIs, and **Mermaid dashboards** (pie/bar charts) for visual storytelling.
-- **Safety**: Hides raw SQL queries, database structures, and server jargon from the narrative.
+
+| Aspect | Behavior |
+|---|---|
+| **Goal** | Deliver actionable business takeaways immediately. |
+| **Formatting** | Polished Markdown, formatted currency (BRL, R$), bulleted KPIs, and Mermaid charts (pie/bar). |
+| **Safety** | Hides raw SQL queries, database structures, and server jargon from the narrative. |
 
 ### 2. Developer Persona (`role = "developer"`)
+
 Tailored for software engineers, database administrators, and data analysts.
-- **Goal**: Provide raw technical transparency and diagnostic detail.
-- **Formatting**: Inline SQL statements, explicit table and view names, query optimizations, and technical Mermaid diagrams (like ER diagrams or data flowcharts).
-- **Returned Metadata**: Includes the exact list of SQL queries executed inside the `queries_used` response field.
+
+| Aspect | Behavior |
+|---|---|
+| **Goal** | Provide raw technical transparency and diagnostic detail. |
+| **Formatting** | Inline SQL statements, explicit table/view names, query optimizations, and ER diagrams. |
+| **Extra metadata** | Returns the exact SQL queries executed in the `queries_used` response field. |
 
 ---
 
 ## System Prompt Builder (`app/core/prompts.py`)
 
-Here is how the prompts are dynamically generated based on the requested user role:
+The system prompt is dynamically assembled from modular string blocks based on the requested user role:
 
 ```python
 """
@@ -76,14 +93,33 @@ def build_system_prompt(role: str = "executive") -> str:
 ```
 
 ### Code Deepdive
-- **Persona String Constants**: System instructions are broken out into module-level string constants. Notice the specific instructions to use Markdown formatting and Mermaid for executives, versus raw SQL for developers.
-- **`build_system_prompt`**: A simple factory function that dynamically concatenates the appropriate persona, global tool rules, schema references, and formatting guidelines based on the `role` argument passed in by the user's session.
+
+| Block | Purpose |
+|---|---|
+| `_SCHEMA_REFERENCE` | Provides the LLM with the full Gold schema (table names, columns, types) so it can write valid ad-hoc SQL. |
+| `_TOOL_RULES` | Hard constraints — forces the model to call a tool before answering, and restricts it to SELECT-only queries. |
+| `_MERMAID_GUIDELINES` | Instructs the LLM to embed Mermaid visualizations when charts would improve readability. |
+| `_EXECUTIVE_PERSONA` / `_DEVELOPER_PERSONA` | Controls the output style. Executive hides SQL; Developer exposes it. |
+| `build_system_prompt(role)` | Factory function that concatenates the correct persona with the shared schema, rules, and guidelines. |
+
+> [!NOTE]
+> The `_SCHEMA_REFERENCE` block (truncated above as `...`) contains the full column-level schema of all Gold tables and views. This is what enables the LLM to write syntactically correct ad-hoc SQL queries.
 
 ---
 
 ## Agent Loop Service (`app/services/gemini_agent.py`)
 
-The agent loop executes in a loop, resolving Gemini's tool calls and feeding the results back. It compiles convenience queries into raw SQL for developer visibility.
+The agent loop iterates until Gemini stops requesting tools. Each iteration either resolves a tool call or extracts the final text response.
+
+```mermaid
+flowchart TD
+    Start["User sends message"] --> Call["Call Gemini API"]
+    Call --> Check{Has function_call?}
+    Check -->|Yes| Exec["Execute Python tool"]
+    Exec --> Append["Append result to chat history"]
+    Append --> Call
+    Check -->|No| Done["Return final text response"]
+```
 
 ```python
 import logging
@@ -175,10 +211,14 @@ async def run_agent(user_message: str, role: str = "executive") -> dict:
 ```
 
 ### Code Deepdive
-- **Tool-to-SQL Mapping**: `_TOOL_SQL_MAP` contains string templates mapping the high-level semantic tools (like `monthly_trends`) to their exact underlying Databricks SQL queries.
-- **Tool Resolution (`_resolve_query`)**: Before executing a tool, this helper method interpolates the user's arguments (e.g., `{months: 6}`) into the raw SQL string, storing it for the Developer Persona's audit log.
-- **The Agent Loop**: Iterates up to 10 times (`max_iterations`).
-  1. It generates a response from Gemini using `client.models.generate_content`.
-  2. If the model decides it needs more data, it returns a `function_call` payload instead of text.
-  3. The Python script intercepts this, executes the real Python function, and appends the result to the chat history.
-  4. The loop restarts. Once the LLM has enough data to answer the original question, it outputs final text, breaking the loop.
+
+| Component | What It Does | Why It Matters |
+|---|---|---|
+| `_TOOL_SQL_MAP` | Maps tool names to parameterized SQL templates (e.g. `monthly_trends` → `SELECT ... LIMIT {months}`). | Allows the Developer persona to show the exact SQL that was executed, even for convenience tools. |
+| `_resolve_query(tool_name, tool_args)` | Interpolates user arguments into the SQL template. Falls back to defaults (`months=12`, `limit=20`) if the LLM omits optional params. | Ensures the `queries_used` audit log always contains a valid, fully-resolved SQL string. |
+| `max_iterations = 10` | Caps the agent loop at 10 rounds to prevent infinite tool-calling cycles. | Safety net — if the LLM keeps requesting tools without converging on a text answer, the loop terminates gracefully. |
+| `function_calls` list check | After each Gemini response, checks if the model returned `function_call` parts or plain text parts. | This is the core branching logic: tool calls loop back, text responses break out and return to the user. |
+| `types.Part.from_function_response(...)` | Packages the Python function's return value as a structured MCP-style response and appends it to the conversation history. | Gemini sees the tool result as part of the chat, enabling it to synthesize the data into its final answer. |
+
+> [!WARNING]
+> The `temperature` is set to `0.2` — very low. This is intentional for a data analytics agent: you want deterministic, factual answers, not creative hallucinations. Raising this value would increase the risk of fabricated numbers.

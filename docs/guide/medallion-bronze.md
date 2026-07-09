@@ -1,15 +1,26 @@
 # Bronze Layer Ingestion
 
-The Bronze Layer is responsible for raw data replication. It ingests source CSV datasets deposited in a Databricks Unity Catalog Volume and saves them as raw Delta tables. 
+The Bronze Layer is responsible for raw data replication. It ingests source CSV datasets deposited in a Databricks Unity Catalog Volume and saves them as raw Delta tables.
 
 ## Objectives
+
 - **Raw Replica**: Retain original schemas and column names without structural transformation.
 - **Traceability**: Append metadata (like `_load_timestamp`) to keep track of ingestion history.
 - **Delta Storage**: Store as Delta Lake format to benefit from ACID transactions, version history, and optimization properties.
 
+---
+
 ## Ingestion Pipeline (`01_ingest.py`)
 
-Here is the complete ingestion script executed in Databricks:
+The script loops through a mapping of CSV filenames → table names, reading each file with schema inference and writing it as a Delta table.
+
+```mermaid
+flowchart LR
+    CSV["CSV in Unity Volume"] --> Read["Spark CSV Reader"]
+    Read --> Audit["Add _load_timestamp"]
+    Audit --> Write["Write Delta Table"]
+    Write --> Verify["SHOW TABLES"]
+```
 
 ```python
 # Databricks notebook source
@@ -61,15 +72,29 @@ spark.sql("SHOW TABLES IN raw_data.bronze").show()
 ```
 
 ### Code Deepdive
-- **Spark Session & Path Settings**: The script initializes a PySpark session and sets the Unity Catalog volume path where raw CSVs are stored.
-- **Table Mapping Dictionary**: A simple dictionary maps CSV filenames to their corresponding target table names.
-- **Dynamic Ingestion Loop**: For each file, the script:
-  1. Reads the CSV using Spark's automatic schema inference (`inferSchema="true"`).
-  2. Injects a tracking column (`_load_timestamp`) with the current server time for auditability.
-  3. Writes the dataframe to the `raw_data.bronze` schema using the Delta Lake format in overwrite mode, enabling `mergeSchema` to handle minor column variations over time.
 
-## Architectural Design
+| Step | Code | Purpose |
+|---|---|---|
+| **Volume path** | `"/Volumes/raw_data/default/raw_data/"` | References a Unity Catalog Volume — a secure, governed file store separate from the database namespace. |
+| **Table mapping** | `{"olist_orders_dataset.csv": "bronze_olist_orders", ...}` | Decouples source filenames from target table names. Adding a new CSV only requires a new dictionary entry. |
+| **Schema inference** | `.option("inferSchema", "true")` | Spark reads a sample of each CSV and automatically determines column types (int, string, double, etc.). |
+| **Audit column** | `.withColumn("_load_timestamp", current_timestamp())` | Stamps every row with the exact time it was ingested, enabling time-based debugging and lineage tracking. |
+| **Merge schema** | `.option("mergeSchema", "true")` | If the upstream CSV adds a new column, Delta Lake will evolve the table schema instead of failing. |
+| **Overwrite mode** | `.mode("overwrite")` | Full-refresh on each run. Historical versions are still accessible via Delta Lake Time Travel. |
 
-1. **Schema Inference**: CSV schemas are inferred dynamically on read, preventing ingestion from breaking when minor changes occur in upstream source exports.
-2. **Unity Catalog Volume**: File paths reference secure Unity Catalog Volumes (`/Volumes/raw_data/default/raw_data/`), separating raw CSV uploads from structured database spaces.
-3. **Overwrite Mode**: Overwrite mode is used at this stage to avoid double-counting raw items during pipeline runs. Historical changes are tracked natively by Delta Lake's transaction log (Time Travel).
+> [!NOTE]
+> Overwrite mode is used intentionally at the Bronze layer — it prevents double-counting raw items across pipeline runs. If you need to audit what changed between runs, use Delta Lake's `DESCRIBE HISTORY` command.
+
+---
+
+## Source Datasets
+
+The following Olist Brazilian E-Commerce CSV files are ingested:
+
+| CSV File | Bronze Table | Row Description |
+|---|---|---|
+| `olist_orders_dataset.csv` | `bronze_olist_orders` | One row per order (order ID, customer ID, timestamps). |
+| `olist_order_items_dataset.csv` | `bronze_olist_order_items` | One row per order line item (product, price, freight). |
+| `olist_customers_dataset.csv` | `bronze_olist_customers` | One row per customer (ID, city, state, zip). |
+| `olist_products_dataset.csv` | `bronze_olist_products` | One row per product (category, dimensions, weight). |
+| `product_category_name_translation.csv` | `bronze_category_translation` | Portuguese → English category name mapping. |

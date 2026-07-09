@@ -1,16 +1,22 @@
 # Introduction
 
-The **Retail Intelligence Platform** is an enterprise-inspired data lakehouse and intelligence serving layer built to showcase the full lifecycle of analytical data—from raw source ingestion to natural language business intelligence.
+The **Retail Intelligence Platform** is an enterprise-inspired data lakehouse and intelligence serving layer built to showcase the full lifecycle of analytical data — from raw source ingestion to natural language business intelligence.
 
-Using the popular Brazilian E-Commerce dataset (Olist), the platform processes millions of raw transactions and provides unified insights to downstream developers, dashboards, and AI agents.
+Using the popular Brazilian E-Commerce dataset (Olist), the platform processes raw transactions through a medallion pipeline and serves unified insights to dashboards, REST clients, LLM agents, and Claude Desktop via MCP.
+
+---
 
 ## Core Pillars
 
-1. **Medallion Architecture**: Powered by Databricks, Delta Lake, and PySpark, the pipeline structures data into Bronze (raw replica), Silver (cleaned & conformed), and Gold (surrogate-keyed dimensional star schema) layers.
-2. **Quality Gates & Governance**: An automated Data Governance & Data Quality (DGDQ) audit logging framework halts ingestion pipelines if critical business thresholds are violated.
-3. **REST Serving Layer**: A FastAPI server provides high-performance access to sales trends, YoY metrics, customer lifetime value (LTV), and category analysis.
-4. **Model Context Protocol (MCP)**: Exposes the data layer as standard tool specifications, allowing standard LLM clients (like Claude Desktop) to invoke SQL queries and summaries natively.
-5. **Role-Aware GenAI Agent**: An integrated Gemini 2.5 Flash agent that adaptively changes its response format between executive-friendly dashboards (with Mermaid visuals) and engineering-focused SQL transparency.
+| Pillar | Technology | What It Does |
+|---|---|---|
+| **Medallion Architecture** | Databricks, Delta Lake, PySpark | Structures data into Bronze (raw), Silver (cleaned), and Gold (star schema) layers. |
+| **Quality Gates** | Custom DGDQ framework | Automated uniqueness and referential integrity checks that halt the pipeline if thresholds are violated. |
+| **REST Serving** | FastAPI | High-performance API access to sales trends, YoY metrics, customer LTV, and ad-hoc SQL. |
+| **Model Context Protocol** | FastMCP | Exposes Gold views as standard MCP tools — any LLM client (like Claude Desktop) can query them natively. |
+| **GenAI Agent** | Gemini 2.5 Flash | Role-aware conversational agent that adapts output between executive dashboards and developer SQL transparency. |
+
+---
 
 ## Project Structure
 
@@ -24,8 +30,24 @@ Retail-Intelligence-Platform/
 │   │   ├── schemas/              # Pydantic validation schemas
 │   │   └── services/             # Databricks client & Gemini agent loop
 │   └── Dockerfile
-├── docs/                         # VitePress documentation
+├── docs/                         # VitePress documentation (this site)
 ├── notebooks/                    # PySpark ETL medallion stages
 ├── sql/                          # Gold-layer reporting view definitions
+├── tests/                        # Unit and integration tests
 └── databricks.yml                # Databricks Asset Bundle (DAB) config
 ```
+
+---
+
+## Quick Links
+
+| Page | Description |
+|---|---|
+| [System Architecture](/guide/architecture) | High-level data flow diagram and medallion stage overview. |
+| [Bronze Ingestion](/guide/medallion-bronze) | Raw CSV → Delta Lake ingestion pipeline. |
+| [Silver Processing](/guide/medallion-silver) | Cleaning, deduplication, localization, and DGDQ quality gates. |
+| [Gold Serving](/guide/medallion-gold) | Star schema design, dimension generation, and fact table merge. |
+| [REST API](/guide/api-rest) | FastAPI endpoint reference with code samples. |
+| [MCP Server](/guide/api-mcp) | Model Context Protocol server setup and tool catalog. |
+| [GenAI Agent](/guide/api-agent) | Gemini agent loop, persona system, and prompt builder. |
+| [Reference](/guide/reference) | Full glossary of terms and complete SQL view definitions. |

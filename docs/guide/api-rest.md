@@ -1,16 +1,44 @@
 # REST API Serving Layer
 
-The FastAPI application acts as the analytical query serving layer for the database. By utilizing a pool-based connection pool to Databricks SQL Warehouse, it fetches and parses structured analytical views on-the-fly.
+The FastAPI application acts as the analytical query serving layer. It connects to the Databricks SQL Warehouse via the `databricks-sql-connector` and exposes read-only endpoints for executive KPIs, sales trends, customer rankings, and ad-hoc SQL.
 
 ---
 
 ## Architecture Design
 
-FastAPI routes are split into:
-1. **Sales Intelligence Router**: Provides standard executive summary views (`/kpis`, `/monthly-trend`, `/yoy-growth`).
-2. **Business Analytics Router**: Serves customer tier views (`/customer-ltv`, `/category-freight`) and coordinates ad-hoc SQL executions (`/query`) behind read-only guards.
+```mermaid
+flowchart LR
+    subgraph Routes
+        S["/api/v1/sales/*"]
+        A["/api/v1/analytics/*"]
+        AG["/api/v1/agent/*"]
+    end
 
-### Databricks Connection Broker (`databricks_client.py`)
+    subgraph Services
+        WH["Warehouse Service"]
+        GM["Gemini Agent"]
+        DB["DatabricksClient"]
+    end
+
+    S --> WH
+    A --> WH
+    AG --> GM
+    WH --> DB
+    GM --> WH
+    DB -->|databricks-sql-connector| DW["Databricks SQL Warehouse"]
+```
+
+FastAPI routes are split into:
+
+| Router | Base Path | Purpose |
+|---|---|---|
+| **Sales** | `/api/v1/sales` | Executive KPIs, monthly trends, YoY growth |
+| **Analytics** | `/api/v1/analytics` | Customer LTV rankings, category freight analysis, ad-hoc SQL |
+| **Agent** | `/api/v1/agent` | Gemini AI agent chat endpoint |
+
+---
+
+## Databricks Connection Broker (`databricks_client.py`)
 
 A singleton client manages query execution through the `databricks-sql-connector` library.
 
@@ -49,13 +77,25 @@ class DatabricksClient:
 db_service = DatabricksClient()
 ```
 
+### Code Deepdive
+
+| Component | What It Does | Why It Matters |
+|---|---|---|
+| `_connection = None` + lazy `_get_connection()` | Creates the Databricks connection on first use, then reuses it for all subsequent queries. | Avoids the overhead of opening a new TCP+auth handshake on every API request. |
+| `cursor.description` | Extracts column names from the result metadata. | Enables returning results as `list[dict]` instead of raw tuples — much easier to serialize to JSON. |
+| `dict(zip(columns, row))` | Zips column names with each row's values into a dictionary. | Produces clean `{"total_orders": 99441, "total_revenue": 1234567.89}` JSON output. |
+
+> [!NOTE]
+> The client is instantiated as a module-level singleton (`db_service = DatabricksClient()`). All routers import and share this single instance.
+
 ---
 
 ## Endpoint Reference
 
 ### 1. Executive KPIs
+
 - **Endpoint**: `GET /api/v1/sales/kpis`
-- **Response**: `APIResponse` containing total orders, customers, revenue, and AOV.
+- **Response**: Total orders, customers, revenue, and average order value.
 
 ```python
 @router.get("/kpis", response_model=APIResponse)
@@ -67,9 +107,10 @@ async def get_executive_kpis():
 ```
 
 ### 2. Monthly Sales Trends
+
 - **Endpoint**: `GET /api/v1/sales/monthly-trend`
-- **Query Parameters**: `limit: int` (default 12)
-- **Response**: List of monthly aggregates.
+- **Query Parameters**: `limit: int` (default 12, max 60)
+- **Response**: List of monthly aggregates with revenue and freight totals.
 
 ```python
 @router.get("/monthly-trend", response_model=APIResponse)
@@ -81,10 +122,25 @@ async def get_monthly_sales(limit: int = Query(default=12, ge=1, le=60)):
     return APIResponse(data=data)
 ```
 
-### 3. Customer LTV Rankings
+### 3. Year-over-Year Growth
+
+- **Endpoint**: `GET /api/v1/sales/yoy`
+- **Response**: Revenue per year with YoY growth percentage.
+
+```python
+@router.get("/yoy", response_model=APIResponse)
+async def get_yoy_growth():
+    data = db_service.execute_query(
+        "SELECT * FROM raw_data.gold.vw_yoy_growth ORDER BY calendar_year DESC"
+    )
+    return APIResponse(data=data)
+```
+
+### 4. Customer LTV Rankings
+
 - **Endpoint**: `GET /api/v1/analytics/customer-ltv`
-- **Query Parameters**: `limit: int` (default 50), `decile: int` (optional, 1 to 10)
-- **Response**: List of customers ranked by spending.
+- **Query Parameters**: `limit: int` (default 50), `decile: int` (optional, 1–10)
+- **Response**: List of customers ranked by lifetime spending.
 
 ```python
 @router.get("/customer-ltv", response_model=APIResponse)
@@ -100,10 +156,11 @@ async def get_customer_ltv(
     return APIResponse(data=data)
 ```
 
-### 4. Ad-Hoc SQL (Read-Only Guarded)
+### 5. Ad-Hoc SQL (Read-Only Guarded)
+
 - **Endpoint**: `POST /api/v1/analytics/query`
 - **Request Body**: `{"sql": "SELECT COUNT(*) FROM raw_data.gold.fact_sales"}`
-- **Response**: Query results and metadata.
+- **Response**: Query results with column metadata and row count.
 
 ```python
 _FORBIDDEN_PREFIXES = frozenset(
@@ -122,3 +179,16 @@ async def execute_query(request: QueryRequest):
     columns = list(data[0].keys()) if data else []
     return QueryResponse(row_count=len(data), columns=columns, data=data)
 ```
+
+### Code Deepdive
+
+| Endpoint | SQL Source | Guard |
+|---|---|---|
+| `/kpis` | `vw_executive_kpis LIMIT 1` | None — single-row view. |
+| `/monthly-trend` | `vw_monthly_sales` | `limit` clamped to `[1, 60]` via `Query(ge=1, le=60)`. |
+| `/yoy` | `vw_yoy_growth` | None — small result set (one row per year). |
+| `/customer-ltv` | `vw_customer_ltv_ranking` | Optional `decile` filter + `limit` clamped to `[1, 500]`. |
+| `/query` | User-supplied SQL | **Keyword blocklist** — extracts the first token and rejects any write operation (`DROP`, `DELETE`, `INSERT`, etc.). |
+
+> [!CAUTION]
+> The ad-hoc `/query` endpoint uses a **first-keyword blocklist**, not a full SQL parser. This is a lightweight guard suitable for internal/demo use. For production, consider using a proper SQL parser or Databricks row-level security.
