@@ -60,6 +60,14 @@ print("Bronze layer ingestion complete!")
 spark.sql("SHOW TABLES IN raw_data.bronze").show()
 ```
 
+### Code Deepdive
+- **Spark Session & Path Settings**: The script initializes a PySpark session and sets the Unity Catalog volume path where raw CSVs are stored.
+- **Table Mapping Dictionary**: A simple dictionary maps CSV filenames to their corresponding target table names.
+- **Dynamic Ingestion Loop**: For each file, the script:
+  1. Reads the CSV using Spark's automatic schema inference (`inferSchema="true"`).
+  2. Injects a tracking column (`_load_timestamp`) with the current server time for auditability.
+  3. Writes the dataframe to the `raw_data.bronze` schema using the Delta Lake format in overwrite mode, enabling `mergeSchema` to handle minor column variations over time.
+
 ## Architectural Design
 
 1. **Schema Inference**: CSV schemas are inferred dynamically on read, preventing ingestion from breaking when minor changes occur in upstream source exports.

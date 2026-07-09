@@ -75,6 +75,10 @@ def build_system_prompt(role: str = "executive") -> str:
     return "\n\n".join([persona, _SCHEMA_REFERENCE, _TOOL_RULES, _MERMAID_GUIDELINES])
 ```
 
+### Code Deepdive
+- **Persona String Constants**: System instructions are broken out into module-level string constants. Notice the specific instructions to use Markdown formatting and Mermaid for executives, versus raw SQL for developers.
+- **`build_system_prompt`**: A simple factory function that dynamically concatenates the appropriate persona, global tool rules, schema references, and formatting guidelines based on the `role` argument passed in by the user's session.
+
 ---
 
 ## Agent Loop Service (`app/services/gemini_agent.py`)
@@ -169,3 +173,12 @@ async def run_agent(user_message: str, role: str = "executive") -> dict:
         
     return {"response": "Timeout or limit reached.", "tools_used": tools_used}
 ```
+
+### Code Deepdive
+- **Tool-to-SQL Mapping**: `_TOOL_SQL_MAP` contains string templates mapping the high-level semantic tools (like `monthly_trends`) to their exact underlying Databricks SQL queries.
+- **Tool Resolution (`_resolve_query`)**: Before executing a tool, this helper method interpolates the user's arguments (e.g., `{months: 6}`) into the raw SQL string, storing it for the Developer Persona's audit log.
+- **The Agent Loop**: Iterates up to 10 times (`max_iterations`).
+  1. It generates a response from Gemini using `client.models.generate_content`.
+  2. If the model decides it needs more data, it returns a `function_call` payload instead of text.
+  3. The Python script intercepts this, executes the real Python function, and appends the result to the chat history.
+  4. The loop restarts. Once the LLM has enough data to answer the original question, it outputs final text, breaking the loop.

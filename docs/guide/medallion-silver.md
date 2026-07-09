@@ -96,6 +96,13 @@ spark.sql(f"OPTIMIZE {SILVER_SCHEMA}.silver_order_items ZORDER BY (order_id, pro
 logger.info("Enterprise Silver layer pipeline complete and optimized!")
 ```
 
+### Code Deepdive
+- **Customers Deduplication**: Drops nulls in critical IDs and deduplicates the dataframe by `customer_unique_id`. Also normalizes the city string to lowercase with no trailing spaces.
+- **Orders Timestamp Casting**: Iterates through an array of timestamp columns, explicitly casting the parsed strings to native Spark timestamp types.
+- **Products Localization Join**: Joins the product catalog against the `bronze_category_translation` table to swap out Portuguese category names with their English equivalents, coalescing nulls into an "unknown" default.
+- **Order Items Pass-Through**: Drops records with missing relational keys to prevent orphans downstream.
+- **Optimization Strategy**: Every processed table is written to the `raw_data.silver` schema in Delta format, immediately followed by `OPTIMIZE` and `ZORDER BY` on primary and foreign keys, minimizing disk scans for future queries.
+
 ---
 
 ## Data Governance & Data Quality (DGDQ) Ingestion Guard (`05_quality_checks.py`)
@@ -213,5 +220,10 @@ validator.check_referential_integrity(df_fact, df_dim_cust, "customer_sk", "cust
 validator.check_referential_integrity(df_fact, df_dim_prod, "product_sk", "product_sk", "fact_sales", "dim_product")
 validator.check_referential_integrity(df_fact, df_dim_date, "order_date_sk", "date_sk", "fact_sales", "dim_date")
 
-validator.evaluate_and_enforce()
 ```
+
+### Code Deepdive
+- **DGDQValidator Class**: A stateful validation class that accumulates test results and errors throughout the run.
+- **check_uniqueness**: Verifies that the count of all rows matches the count of distinct primary keys.
+- **check_referential_integrity**: Performs a `left_anti` join between the fact table and the dimension table. Any rows remaining in the result set represent facts that point to non-existent dimension keys (orphans).
+- **evaluate_and_enforce**: Checks if the internal `critical_failures` counter is greater than 0. If it is, the script forcibly halts the Databricks cluster using `dbutils.notebook.exit()` or by raising a generic exception, stopping bad data from polluting the Gold layer.

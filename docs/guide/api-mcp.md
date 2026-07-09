@@ -96,6 +96,12 @@ if __name__ == "__main__":
     mcp.run(transport="sse")
 ```
 
+### Code Deepdive
+- **FastMCP Initialization**: The `FastMCP` class is instantiated with metadata, binding to `0.0.0.0:8001`. This effectively boots up an asynchronous web server behind the scenes.
+- **`@mcp.tool()` Decorator**: This is the magic wrapper. Any Python function decorated with `@mcp.tool()` is automatically parsed (including its docstrings and type hints) and advertised to connecting LLM clients via the MCP protocol.
+- **Database Abstraction**: The actual SQL execution is abstracted away into the `app.services.warehouse` module, keeping the MCP server code lean and purely focused on exposing endpoints.
+- **SSE Transport**: The server is started with `transport="sse"`. Unlike standard REST which closes the connection, SSE keeps a persistent one-way stream open for the LLM to subscribe to status updates and results.
+
 ---
 
 ## Exposed Tools
