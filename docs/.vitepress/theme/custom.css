@@ -102,9 +102,8 @@ body {
 
 /* Custom home page Hero enhancements */
 .VPHero .name {
-  background: linear-gradient(135deg, var(--se-green) 30%, var(--se-orange) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--se-green) !important;
+  -webkit-text-fill-color: var(--se-green) !important;
 }
 
 .VPHero .actions .VPButton.brand {

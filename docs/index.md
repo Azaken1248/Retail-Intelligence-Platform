@@ -20,13 +20,16 @@ hero:
       link: https://github.com/Azaken1248/Retail-Intelligence-Platform
 
 features:
-  - icon: 🧱
+  - icon:
+      src: /assets/icon-pipeline.svg
     title: Medallion Pipeline
     details: Ingest raw CSV data, clean schemas in Silver, and expose structured dimensions & facts in Gold using Delta Lake.
-  - icon: 🔌
+  - icon:
+      src: /assets/icon-mcp.svg
     title: Model Context Protocol
     details: Fully functional MCP server enabling downstream LLM agents to query KPIs, LTVs, and execute ad-hoc SQL.
-  - icon: 🤖
+  - icon:
+      src: /assets/icon-agent.svg
     title: Generative AI Agent
     details: Dynamic Gemini 2.5 Flash agent with customized roles for Business Executives and Technical Developers.
 ---
